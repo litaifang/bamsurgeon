@@ -56,7 +56,10 @@ with pysam.AlignmentFile(inbamfn) as inbam:
     
     pick1_header = copy( inbam.header )
     pick2_header = copy( inbam.header )
-
+    
+    pick1_header.pop('PG', None)
+    pick2_header.pop('PG', None)
+    
     for rg_i in pick1_header['RG']:
         rg_i['SM'] = sm1
 
