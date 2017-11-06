@@ -1,4 +1,4 @@
-FROM lethalfang/bamsurgeon:base-1.0.0
+FROM lethalfang/bamsurgeon:base-1.1
 
 ENV HOME=/usr/local/
 WORKDIR /usr/local
