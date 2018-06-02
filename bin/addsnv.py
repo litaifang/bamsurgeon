@@ -272,7 +272,7 @@ def makemut(args, hc, avoid, alignopts):
         if not hasSNP or args.force:
             outbam_muts.close()
 
-            aligners.remap_bam(args.aligner, tmpoutbamname, args.refFasta, alignopts, mutid=hapstr, paired=(not args.single), picardjar=args.picardjar)
+            aligners.remap_bam(args.aligner, tmpoutbamname, args.refFasta, alignopts, mutid=hapstr, paired=(not args.single), picardjar=args.picardjar, insane=args.insane)
 
             outbam_muts = pysam.Samfile(tmpoutbamname,'rb')
             coverwindow = 1
@@ -478,7 +478,7 @@ def run():
     parser = argparse.ArgumentParser(description='adds SNVs to reads, outputs modified reads as .bam along with mates')
     parser.add_argument('-v', '--varfile', dest='varFileName', required=True, help='Target regions to try and add a SNV, as BED')
     parser.add_argument('-f', '--bamfile', dest='bamFileName', required=True, help='sam/bam file from which to obtain reads')
-    parser.add_argument('-r', '--reference', dest='refFasta', required=True, help='reference genome, fasta indexed with bwa index -a stdsw _and_ samtools faidx')
+    parser.add_argument('-r', '--reference', dest='refFasta', required=True, help='reference genome, fasta indexed with bwa index _and_ samtools faidx')
     parser.add_argument('-o', '--outbam', dest='outBamFile', required=True, help='.bam file name for output')
     parser.add_argument('-s', '--snvfrac', dest='snvfrac', default=1, help='maximum allowable linked SNP MAF (for avoiding haplotypes) (default = 1)')
     parser.add_argument('-m', '--mutfrac', dest='mutfrac', default=0.5, help='allelic fraction at which to make SNVs (default = 0.5)')
@@ -496,6 +496,7 @@ def run():
     parser.add_argument('--ignoresnps', action='store_true', default=False, help="make mutations even if there are non-reference alleles sharing the relevant reads")
     parser.add_argument('--ignoreref', action='store_true', default=False, help="make mutations even if the mutation is back to the reference allele")
     parser.add_argument('--force', action='store_true', default=False, help="force mutation to happen regardless of nearby SNP or low coverage")
+    parser.add_argument('--insane', action='store_true', default=False, help="ignore sanity check enforcing input read count = output read count in realignment")
     parser.add_argument('--single', action='store_true', default=False, help="input BAM is simgle-ended (default is paired-end)")
     parser.add_argument('--maxopen', dest='maxopen', default=1000, help="maximum number of open files during merge (default 1000)")
     parser.add_argument('--requirepaired', action='store_true', default=False, help='skip mutations if unpaired reads are present')

@@ -324,11 +324,12 @@ def makemut(args, bedline, alignopts):
 
     if args.seed is not None: random.seed(int(args.seed) + int(bedline.strip().split()[1]))
 
-    mutid = '_'.join(map(str, bedline.strip().split()))
+    mutid = '_'.join(map(str, bedline.strip().split()[:4]))
+
     try:
         bamfile = pysam.Samfile(args.bamFileName, 'rb')
         reffile = pysam.Fastafile(args.refFasta)
-        logfn = '_'.join(map(os.path.basename, bedline.strip().split())) + ".log"
+        logfn = '_'.join(map(os.path.basename, bedline.strip().split()[:4])) + ".log"
         logfile = open('addsv_logs_' + os.path.basename(args.outBamFile) + '/' + os.path.basename(args.outBamFile) + '_' + logfn, 'w')
         exclfile = args.tmpdir + '/' + '.'.join((mutid, 'exclude', str(uuid4()), 'txt'))
         exclude = open(exclfile, 'w')
@@ -368,7 +369,7 @@ def makemut(args, bedline, alignopts):
             trn_end   = int(c[5]) + 3000
             if trn_start < 0: trn_start = 0
 
-        actions = map(lambda x: x.strip(),' '.join(araw).split(','))
+        actions = map(lambda x: x.strip(),' '.join(araw).split(';'))
 
         svfrac = float(args.svfrac) # default, can be overridden by cnv file or per-variant
 
@@ -416,21 +417,35 @@ def makemut(args, bedline, alignopts):
 
         trn_contigs = None
         if is_transloc:
+            print "INFO\t" + now() + "\t" + mutid + "\tassemble translocation end: %s:%d-%d" % (trn_chrom, trn_start, trn_end)
             trn_contigs = ar.asm(trn_chrom, trn_start, trn_end, args.bamFileName, reffile, int(args.kmersize), args.tmpdir, mutid=mutid, debug=args.debug)
 
         maxcontig = sorted(contigs)[-1]
 
         trn_maxcontig = None
-        if is_transloc: trn_maxcontig = sorted(trn_contigs)[-1]
 
-        # be strict about contig quality
+        if is_transloc:
+            if len(trn_contigs) == 0:
+                sys.stderr.write("WARN\t" + now() + "\t" + mutid + "\ttranslocation partner generated no contigs, skipping site.\n")
+                return None, None
+
+            trn_maxcontig = sorted(trn_contigs)[-1]
+
         if re.search('N', maxcontig.seq):
-            sys.stderr.write("WARN\t" + now() + "\t" + mutid + "\tcontig dropped due to ambiguous base (N), aborting mutation.\n")
-            return None, None
+            if args.allowN:
+                sys.stderr.write("WARN\t" + now() + "\t" + mutid + "\tcontig has ambiguous base (N), replaced with 'A'\n")
+                maxcontig.seq = re.sub('N', 'A', maxcontig.seq)
+            else:
+                sys.stderr.write("WARN\t" + now() + "\t" + mutid + "\tcontig dropped due to ambiguous base (N), aborting mutation.\n")
+                return None, None
 
         if is_transloc and re.search('N', trn_maxcontig.seq):
-            sys.stderr.write("WARN\t" + now() + "\t" + mutid + "\tcontig dropped due to ambiguous base (N), aborting mutation.\n")
-            return None, None
+            if args.allowN:
+                sys.stderr.write("WARN\t" + now() + "\t" + mutid + "\tcontig has ambiguous base (N), replaced with 'A'\n")
+                trn_maxcontig.seq = re.sub('N', 'A', trn_maxcontig.seq)
+            else:
+                sys.stderr.write("WARN\t" + now() + "\t" + mutid + "\tcontig dropped due to ambiguous base (N), aborting mutation.\n")
+                return None, None
 
         if maxcontig is None:
             sys.stderr.write("WARN\t" + now() + "\t" + mutid + "\tmaxcontig has length 0, aborting mutation!\n")
@@ -490,7 +505,7 @@ def makemut(args, bedline, alignopts):
             if action == 'INS':
                 assert len(a) > 1 # insertion syntax: INS <file.fa> [optional TSDlen]
                 insseqfile = a[1]
-                if not (os.path.exists(insseqfile) or insseqfile == 'RND'): # not a file... is it a sequence? (support indel ins.)
+                if not (os.path.exists(insseqfile) or insseqfile == 'RND' or insseqfile.startswith('INSLIB:')): # not a file... is it a sequence? (support indel ins.)
                     assert re.search('^[ATGCatgc]*$',insseqfile), "cannot determine SV type: %s" % insseqfile # make sure it's a sequence
                     insseq = insseqfile.upper()
                     insseqfile = None
@@ -544,11 +559,22 @@ def makemut(args, bedline, alignopts):
                 if ins_motif is not None:
                     inspoint = mutseq.find_site(ins_motif, left_trim=int(args.maxlibsize), right_trim=int(args.maxlibsize))
 
+                    if inspoint < int(args.maxlibsize) or inspoint > mutseq.length() - int(args.maxlibsize):
+                        print "INFO\t" + now() + "\t" + mutid + "\tpicked midpoint, no cutsite found" + insseqfile
+                        inspoint = mutseq.length()/2
+
                 if insseqfile: # seq in file
                     if insseqfile == 'RND':
                         assert args.inslib is not None # insertion library needs to exist
                         insseqfile = random.choice(args.inslib.keys())
                         print "INFO\t" + now() + "\t" + mutid + "\tchose sequence from insertion library: " + insseqfile
+                        mutseq.insertion(inspoint, args.inslib[insseqfile], tsdlen)
+
+                    elif insseqfile.startswith('INSLIB:'):
+                        assert args.inslib is not None # insertion library needs to exist
+                        insseqfile = insseqfile.split(':')[1]
+                        print "INFO\t" + now() + "\t" + mutid + "\tspecify sequence from insertion library: " + insseqfile
+                        assert insseqfile in args.inslib, '%s not found in insertion library' % insseqfile
                         mutseq.insertion(inspoint, args.inslib[insseqfile], tsdlen)
 
                     else:
@@ -777,7 +803,7 @@ if __name__ == '__main__':
     parser.add_argument('-f', '--bamfile', dest='bamFileName', required=True,
                         help='sam/bam file from which to obtain reads')
     parser.add_argument('-r', '--reference', dest='refFasta', required=True,
-                        help='reference genome, fasta indexed with bwa index -a stdsw _and_ samtools faidx')
+                        help='reference genome, fasta indexed with bwa index _and_ samtools faidx')
     parser.add_argument('-o', '--outbam', dest='outBamFile', required=True,
                         help='.bam file name for output')
     parser.add_argument('-l', '--maxlibsize', dest='maxlibsize', default=600,
@@ -820,6 +846,8 @@ if __name__ == '__main__':
                         help='temporary directory (default=addsv.tmp)')
     parser.add_argument('--seed', default=None,
                         help='seed random number generation')
+    parser.add_argument('--allowN', action='store_true', default=False,
+                        help='allow N in contigs, replace with A and warn user (default: drop mutation)')
     args = parser.parse_args()
     main(args)
 
