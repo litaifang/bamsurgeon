@@ -1,4 +1,4 @@
-FROM lethalfang/bamsurgeon:base-1.0.0
+FROM lethalfang/bamsurgeon:base-1.2
 
 ENV HOME=/usr/local/
 ENV PATH="/usr/local/novocraft:${PATH}"
