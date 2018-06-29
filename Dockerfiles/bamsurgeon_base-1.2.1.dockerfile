@@ -18,6 +18,6 @@ RUN git clone https://github.com/samtools/bcftools.git && make -C bcftools && cp
 RUN wget https://github.com/broadinstitute/picard/releases/download/1.131/picard-tools-1.131.zip && unzip picard-tools-1.131.zip
 RUN wget http://ftp.gnu.org/gnu/automake/automake-1.14.1.tar.gz && tar -xvf automake-1.14.1.tar.gz && cd automake-1.14.1 && ./configure && make && make install
 RUN cd $HOME && git clone https://github.com/adamewing/exonerate.git && cd exonerate && git checkout v2.4.0 && autoreconf -i && ./configure && make && make install
-#RUN cd $HOME && wget http://research-pub.gene.com/gmap/src/gmap-gsnap-2018-05-30.tar.gz && tar -xvf gmap-gsnap-2018-05-30.tar.gz && cd gmap-2018-05-30/ && ./configure && make && make install && cd .. && ln -s gmap-2018-05-30 gmap
+RUN cd $HOME && wget http://research-pub.gene.com/gmap/src/gmap-gsnap-2018-05-30.tar.gz && tar -xvf gmap-gsnap-2018-05-30.tar.gz && cd gmap-2018-05-30/ && ./configure && make && make install && cd .. && ln -s gmap-2018-05-30 gmap
 RUN cd $HOME/bin && wget https://www.dropbox.com/s/rbegan3opz2fc4k/vcfsorter.pl && chmod a+x vcfsorter.pl
 RUN cd $HOME/bin && wget https://github.com/broadinstitute/picard/releases/download/2.18.7/picard.jar
