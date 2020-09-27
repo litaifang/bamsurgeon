@@ -18,8 +18,9 @@ then
     exit 65
 fi
 
+export BAMSURGEON_PICARD_JAR=$1
 
-addindel.py -v ../test_data/test_indels.txt -f  ../test_data/testregion_realign.bam -r $REF -o ../test_data/testregion_mut.bam  --picardjar $1 --aligner mem --seed 1234
+addindel.py -v ../test_data/test_indels.txt -f  ../test_data/testregion_realign.bam -r $REF -o ../test_data/testregion_mut.bam  --aligner mem --seed 1234
 
 if [ $? -ne 0 ]
 then

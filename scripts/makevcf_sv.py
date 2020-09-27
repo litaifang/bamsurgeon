@@ -10,7 +10,7 @@ import argparse
 from uuid import uuid4
 
 def print_header():
-    print textwrap.dedent("""\
+    print(textwrap.dedent("""\
     ##fileformat=VCFv4.1
     ##phasing=none
     ##INDIVIDUAL=TRUTH
@@ -29,7 +29,7 @@ def print_header():
     ##ALT=<ID=INS,Description="Insertion">
     ##ALT=<ID=IGN,Description="Ignore SNVs in Interval">
     ##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
-    #CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSPIKEIN""")
+    #CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSPIKEIN"""))
 
 def printvcf(chrom, bnd1, bnd2, precise, type, svlen, ref, id, svfrac):
     base1 = ref.fetch(chrom, bnd1-1, bnd1) 
@@ -46,12 +46,12 @@ def printvcf(chrom, bnd1, bnd2, precise, type, svlen, ref, id, svfrac):
     info.append('SOMATIC')
     info.append('SVTYPE=' + type.upper())
     info.append('END=' + str(bnd2))
-    info.append('SVLEN=' + str(svlen))
+    info.append('SVLEN=' + str(abs(svlen)))
     info.append('VAF=' + svfrac)
     
     infostr = ';'.join(info)
 
-    print '\t'.join((chrom, str(bnd1), id, base1, alt, '100', 'PASS', infostr, 'GT', './.'))
+    print('\t'.join((chrom, str(bnd1), id, base1, alt, '100', 'PASS', infostr, 'GT', './.')))
 
 
 def precise_interval(mutline, ref):
@@ -63,7 +63,12 @@ def precise_interval(mutline, ref):
     refend   = int(refend)
     id = '.'
 
-    if m[0] == 'ins':
+    if m[0].startswith('big'):
+        bnd1 = int(m[2])+int(m[5])
+        bnd2 = int(m[7])+int(m[9])
+        m[0] = m[0].replace('big', '')
+
+    elif m[0] == 'ins':
         bnd1 = refstart+int(m[6])
         bnd2 = refstart+int(m[6])+1
         id = m[7]
@@ -72,8 +77,8 @@ def precise_interval(mutline, ref):
         chr1 = chrom
         chr2 = m[6]
 
-        bnd1 = (refstart+refend)/2
-        bnd2 = (int(m[7])+int(m[8]))/2
+        bnd1 = int(m[2])+int(m[5])
+        bnd2 = int(m[7])+int(m[9])
 
         id1 = str(uuid4()).split('-')[0]
         id2 = str(uuid4()).split('-')[0]
@@ -84,8 +89,8 @@ def precise_interval(mutline, ref):
         alt1 = '%s[%s:%d[' % (base1, chr2, bnd2) 
         alt2 = ']%s:%d]%s' % (chr1, bnd1, base2) 
 
-        print '\t'.join((chr1, str(bnd1), id1, base1, alt1, '100', 'PASS', 'SOMATIC;SVTYPE=BND;PRECISE;MATEID='+id2+';VAF='+svfrac, 'GT', './.'))
-        print '\t'.join((chr2, str(bnd2), id2, base2, alt2, '100', 'PASS', 'SOMATIC;SVTYPE=BND;PRECISE;MATEID='+id1+';VAF='+svfrac, 'GT', './.'))
+        print('\t'.join((chr1, str(bnd1), id1, base1, alt1, '100', 'PASS', 'SOMATIC;SVTYPE=BND;PRECISE;MATEID='+id2+';VAF='+svfrac, 'GT', './.')))
+        print('\t'.join((chr2, str(bnd2), id2, base2, alt2, '100', 'PASS', 'SOMATIC;SVTYPE=BND;PRECISE;MATEID='+id1+';VAF='+svfrac, 'GT', './.')))
 
     else:
         contigstart = int(m[6])
@@ -120,7 +125,7 @@ def main(args):
         if filename.endswith('.log'):
             with open(args.logdir + '/' + filename, 'r') as log:
                 for line in log:
-                    for mutype in ('ins', 'del', 'inv', 'dup', 'trn'):
+                    for mutype in ('ins', 'del', 'inv', 'dup', 'trn', 'bigdup', 'biginv', 'bigdel'):
                         if line.startswith(mutype):
                             precise_interval(line.strip(), ref)
                             if args.mask:

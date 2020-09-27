@@ -4,13 +4,14 @@
 Methods for making mutations in a sequence
 '''
 
-import string
 import operator
 
-def rc(seq):
-    seq = seq[::-1]
-    seq = seq.translate(string.maketrans("ATGC","TACG"))
-    return seq
+
+def rc(dna):
+    ''' reverse complement '''
+    complements = str.maketrans('acgtrymkbdhvACGTRYMKBDHV', 'tgcayrkmvhdbTGCAYRKMVHDB')
+    return dna.translate(complements)[::-1]
+
 
 def dist(seq1, seq2):
     ''' Hamming distance '''
@@ -23,7 +24,7 @@ def dist(seq1, seq2):
 
 class MutableSeq:
     def __init__(self,seq):
-        self.seq = string.upper(seq.strip())
+        self.seq = str.upper(seq.strip())
 
     def __str__(self):
         return self.seq
@@ -58,6 +59,7 @@ class MutableSeq:
 
     def insertion(self, loc, seq, tsdlen=0):
         ''' inserts seq after position loc, adds taret site duplication (tsd) if tsdlen > 0 '''
+        loc = int(loc)
         tsd = self.seq[loc:loc+tsdlen]
         self.seq = self.seq[:loc] + tsd + seq + self.seq[loc:]
 
@@ -79,10 +81,20 @@ class MutableSeq:
             dupseq = dupseq + self.seq[start:end]
         self.seq = self.seq[:start] + dupseq + self.seq[end:]
 
-    def fusion(self, loc1, other, loc2):
+    def fusion(self, loc1, other, loc2, flip1=False, flip2=False):
         loc1 = int(loc1)
         loc2 = int(loc2)
-        self.seq = self.seq[:loc1] + other.seq[loc2:]
+
+        loc1_seq = self.seq[:loc1]
+        loc2_seq = other.seq[loc2:]
+
+        if flip1:
+            loc1_seq = rc(self.seq[loc1:])
+
+        if flip2:
+            loc2_seq = rc(other.seq[:loc2])
+
+        self.seq = loc1_seq + loc2_seq 
 
         
         

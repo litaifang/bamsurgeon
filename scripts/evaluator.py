@@ -154,10 +154,10 @@ def have_identical_haplotypes(v1, v2, ref):
     v1_seq = seq[:v1_offset] + list(str(v1.ALT[0]).lower()) + seq[v1_offset+len(v1.REF):]
     v2_seq = seq[:v2_offset] + list(str(v2.ALT[0]).lower()) + seq[v2_offset+len(v2.REF):]
     if False:
-        print "reference sequence context\t%s" % (''.join(seq))
-        print "v1 (offset %d) %s\t%s" % (v1_offset, v1, ''.join(v1_seq))
-        print "v2 (offset %d) %s\t%s" % (v2_offset, v2, ''.join(v2_seq))
-        print
+        print("reference sequence context\t%s" % (''.join(seq)))
+        print("v1 (offset %d) %s\t%s" % (v1_offset, v1, ''.join(v1_seq)))
+        print("v2 (offset %d) %s\t%s" % (v2_offset, v2, ''.join(v2_seq)))
+        print("")
 
     try:
         assert seq[v1_offset] == v1.REF[0].upper()
@@ -194,7 +194,7 @@ def evaluate(submission, truth, vtype='SNV', reffa=None, ignorechroms=None, igno
     if reffa:
         reffa_fh  = pysam.Fastafile(reffa)
         if debug:
-            print "DEBUG: Using haplotype aware indel comparison"
+            print("DEBUG: Using haplotype aware indel comparison")
     
     tpcount = 0
     fpcount = 0
@@ -243,7 +243,7 @@ def evaluate(submission, truth, vtype='SNV', reffa=None, ignorechroms=None, igno
                         if have_identical_haplotypes(subrec, trurec, reffa_fh):
                             matched = True
                             if debug:
-                                print "DEBUG: Rescuing %s which has same haplotype as %s" % (subrec, trurec)
+                                print("DEBUG: Rescuing %s which has same haplotype as %s" % (subrec, trurec))
                             break
             if matched:
                 used_truth[str(trurec)] = True
@@ -255,7 +255,7 @@ def evaluate(submission, truth, vtype='SNV', reffa=None, ignorechroms=None, igno
             tpcount += 1
             if tpvcfh:
                 tpvcfh.write_record(subrec)
-            if fns.has_key(str(trurec)):
+            if str(trurec) in fns.keys():
                 del fns[str(trurec)]            
         else:
             if relevant(subrec, vtype, ignorechroms) and passfilter(subrec, disabled=ignorepass) and not svmask(subrec, truvcfh, truchroms): 
@@ -269,10 +269,9 @@ def evaluate(submission, truth, vtype='SNV', reffa=None, ignorechroms=None, igno
             fnvcfh.write_record(fn)
 
 
-    print "tpcount, fpcount, subrecs, trurecs:"
-    print tpcount, fpcount, subrecs, trurecs
+    print(f"tpcount, fpcount, subrecs, trurecs: {tpcount},{fpcount},{subrecs},{trurecs}")
 
-    recall    = float(tpcount) / float(trurecs)
+    recall = float(tpcount) / float(trurecs)
     if tpcount+fpcount > 0:
         precision = float(tpcount) / float(tpcount + fpcount)
     else:
@@ -312,7 +311,7 @@ def main(args):
                       fp_vcf=args.fp_vcf, fn_vcf=args.fn_vcf, tp_vcf=args.tp_vcf,
                       debug=args.debug)
 
-    print "precision, recall, F1 score: " + ','.join(map(str, result))
+    print("precision, recall, F1 score: " + ','.join(map(str, result)))
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="check vcf output against a 'truth' vcf")

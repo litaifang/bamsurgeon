@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # adds up to 100 SNPs to a ~770 kb region around the LARGE gene
 # requires samtools/bcftools
@@ -19,18 +19,17 @@ then
     exit 65
 fi
 
-addsv.py -v ../test_data/test_trn.txt -f ../test_data/testregion_realign.bam -r $REF -o ../test_data/testregion_trn_mut.bam --seed 1234
+addsv.py -p 1 -v ../test_data/test_sv.txt -f ../test_data/testregion_realign.bam -r $REF -o ../test_data/testregion_sv_mut.bam --aligner mem --keepsecondary --seed 1234 --inslib ../test_data/test_inslib.fa --require_exact
 
 if [ $? -ne 0 ]
 then
   echo "addsv.py failed."
-  exit 1
+  exit 65
 else
   echo "sorting output bam..."
-  samtools sort -T ../test_data/testregion_trn_mut.sorted.bam -o ../test_data/testregion_trn_mut.sorted.bam ../test_data/testregion_trn_mut.bam
-  mv ../test_data/testregion_trn_mut.sorted.bam ../test_data/testregion_trn_mut.bam
+  samtools sort -T ../test_data/testregion_sv_mut.sorted.bam -o ../test_data/testregion_sv_mut.sorted.bam ../test_data/testregion_sv_mut.bam
+  mv ../test_data/testregion_sv_mut.sorted.bam ../test_data/testregion_sv_mut.bam
 
   echo "indexing output bam..."
-  samtools index ../test_data/testregion_trn_mut.bam
-
+  samtools index ../test_data/testregion_sv_mut.bam
 fi

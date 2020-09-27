@@ -1,8 +1,14 @@
 #!/usr/bin/env python
 
-from common import *
+from bamsurgeon.common import *
 from collections import OrderedDict as od
 import subprocess
+
+import logging
+FORMAT = '%(levelname)s %(asctime)s %(message)s'
+logging.basicConfig(format=FORMAT)
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 def countBaseAtPos(bamfile,chrom,pos,mutid='null'):
@@ -18,12 +24,13 @@ def countBaseAtPos(bamfile,chrom,pos,mutid='null'):
     pileup = None 
 
     for line in pout:
+        line = line.decode()
         try:
             c = line.strip().split()
             assert len(c) > 5
             pileup = c[4].upper()
         except AssertionError:
-            sys.stderr.write("INFO\t" + now() + "\t" + mutid + "\tmpileup failed, no coverage for base: " + chrom + ":" + str(pos) + "\n")
+            logger.info(" mpileup failed, no coverage for base: " + chrom + ":" + str(pos))
             return []
     bases = []
     if pileup:
@@ -35,23 +42,31 @@ def countBaseAtPos(bamfile,chrom,pos,mutid='null'):
 
 
 def makeins(read, start, ins, debug=False):
-    assert len(read.seq) > len(ins) + 2, "INDELs must be less than one read length - 2bp"
+    if len(read.seq) < len(ins) + 2:
+        logger.warning("INDELs (ins) must be less than one read length, skipped read: %s" % read.query_name)
+        return read.seq
     
-    if debug:
-        print "DEBUG: INS: read.pos:", read.pos
-        print "DEBUG: INS: start:   ", start
-        print "DEBUG: INS: ins:     ", ins
-        print "DEBUG: DEL: cigar:   ", read.cigarstring
-        print "DEBUG: is_reverse:   ", read.is_reverse
+    logger.debug("DEBUG: INS: read.pos: %d" % read.pos)
+    logger.debug("DEBUG: INS: start: %d" % start)
+    logger.debug("DEBUG: INS: ins: %s" % ins)
+    logger.debug("DEBUG: INS: cigar: %s" % read.cigarstring)
+    logger.debug("DEBUG: is_reverse: %s" % read.is_reverse)
 
     orig_len = len(read.seq)
-    pos_in_read = start - read.pos + read.qstart
+    pos_in_read = None
+
+    for (qpos, rpos) in read.get_aligned_pairs():
+        if rpos == start:
+            pos_in_read = qpos
+
+    if pos_in_read is None:
+        logger.warning("ref position %d not covered in read %s" % (start, read.query_name))
+        return read.seq
 
     newseq = read.seq
 
     if pos_in_read > 0: # insertion start in read span
-        if debug:
-            print "DEBUG: INS: pos_in_read:", pos_in_read
+        logger.debug("DEBUG: INS: pos_in_read: %d" % pos_in_read)
 
         if not read.is_reverse:
             left  = read.seq[:pos_in_read]
@@ -67,54 +82,72 @@ def makeins(read, start, ins, debug=False):
             left  = rcseq[:pos_in_read]
             right = rcseq[pos_in_read:]
 
-            newseq = left + ins + right
+            newseq = left + rc(ins) + right
             newseq = rc(newseq[:orig_len])
 
-    if debug:
-        print "DEBUG: INS: orig seq:", read.seq
-        print "DEBUG: INS: newseq:  ", newseq
+    logger.debug("DEBUG: INS: orig seq: %s" % read.seq)
+    logger.debug("DEBUG: INS: newseq: %s" % newseq)
 
     return newseq
 
 
 def makedel(read, chrom, start, end, ref, debug=False):
-    assert len(read.seq) > end-start-2, "INDELs must be less than one read length - 2bp"
+    if len(read.seq) < end-start-2:
+        logger.warning("INDELs (del) must be less than one read length, skipped read: %s" % read.query_name)
+        return read.seq
     
-    if debug:
-        print "DEBUG: DEL: read.pos:", read.pos
-        print "DEBUG: DEL: start:   ", start
-        print "DEBUG: DEL: ins:     ", end
-        print "DEBUG: DEL: cigar:     ", read.cigarstring
-        print "DEBUG: DEL: orig seq:     ", read.seq
+    logger.debug("DEBUG: DEL: read.pos: %d" % read.pos)
+    logger.debug("DEBUG: DEL: start: %d" % start)
+    logger.debug("DEBUG: DEL: ins: %d" % end)
+    logger.debug("DEBUG: DEL: cigar: %s" % read.cigarstring)
+    logger.debug("DEBUG: DEL: orig seq: %s" % read.seq)
 
     orig_len = len(read.seq)
-    #orig_end = read.pos + orig_len
-    start_in_read = start - read.pos + read.qstart
-    end_in_read = end - read.pos + read.qstart
+    
+    start_in_read = None
+    end_in_read = None
 
-    if debug:
-        print "DEBUG: DEL: start_in_read:", start_in_read
-        print "DEBUG: DEL: end_in_read:  ", end_in_read
+    for (qpos, rpos) in read.get_aligned_pairs():
+        if rpos == start:
+            start_in_read = qpos
+
+        if rpos == end:
+            end_in_read = qpos
+
+    if start_in_read is None and read.get_reference_positions()[0] > start:
+        start_in_read = start-read.get_reference_positions()[0]
+
+    if end_in_read is None and read.get_reference_positions()[-1] < end:
+        end_in_read = orig_len + (end-read.get_reference_positions()[-1])
+
+    if start_in_read is None:
+        logger.warning("ref position %d not covered in read %s" % (start, read.query_name))
+        return read.seq
+
+    if end_in_read is None:
+        logger.warning("ref position %d not covered in read %s" % (end, read.query_name))
+        return read.seq
+
+    logger.debug("DEBUG: DEL: start_in_read: %d" % start_in_read)
+    logger.debug("DEBUG: DEL: end_in_read: %d" % end_in_read)
 
     if start_in_read < 0: # deletion begins to the left of the read
-        if debug:
-            print "DEBUG: DEL: del begins to left of read." 
+        
+        logger.debug("DEBUG: DEL: del begins to left of read.")
 
         assert end_in_read < orig_len
         right = read.seq[end_in_read:]
         left  = ref.fetch(chrom, start-(len(read.seq) - len(right)), start)
 
     elif end_in_read > orig_len: # deletion ends to the right of the read
-        if debug:
-            print "DEBUG: DEL: del ends to right of read."
+        logger.debug("DEBUG: DEL: del ends to right of read.")
 
         assert start_in_read > 0
         left  = read.seq[:start_in_read]
         right = ref.fetch(chrom, end, end+(len(read.seq) - len(left)))
 
     else:
-        if debug:
-            print "DEBUG: DEL: del starts and ends within read." 
+        logger.debug("DEBUG: DEL: del starts and ends within read.") 
 
         assert end_in_read <= orig_len and start_in_read >= 0 # deletion contained within the read
         left  = read.seq[:start_in_read]
@@ -122,7 +155,8 @@ def makedel(read, chrom, start, end, ref, debug=False):
         right += ref.fetch(chrom, read.pos+len(read.seq), read.pos+len(read.seq)+(len(read.seq)-len(left)-len(right)))
 
     if debug:
-        print "DEBUG: DEL:  newseq:     ", left + right
+        logger.debug("DEBUG: DEL: newseq: %s" % (left + right))
+
     return left + right
 
 
@@ -138,7 +172,7 @@ def find_mate(read, bam):
 
 
 def mutate(args, log, bamfile, bammate, chrom, mutstart, mutend, mutpos_list, avoid=None, mutid_list=None, is_snv=False, mutbase_list=None, is_insertion=False, is_deletion=False, ins_seq=None, reffile=None, indel_start=None, indel_end=None):
-    assert mutend > mutstart, "mutation start must occur before mutation end: " + mutid
+    assert mutend > mutstart, "mutation start must occur before mutation end"
 
     hasSNP = False
 
@@ -150,14 +184,17 @@ def mutate(args, log, bamfile, bammate, chrom, mutstart, mutend, mutpos_list, av
 
     maxfrac = None
 
-    for pcol in bamfile.pileup(reference=chrom, start=mutstart, end=mutend, max_depth=int(args.maxdepth)):
+    for pcol in bamfile.pileup(reference=chrom, start=mutstart-1, end=mutend+1, max_depth=int(args.maxdepth), ignore_overlaps=False):
         if pcol.pos:
+            if args.ignorepileup and (pcol.pos < mutstart-1 or pcol.pos > mutend+1):
+                continue
+
             refbase = reffile.fetch(chrom, pcol.pos-1, pcol.pos)
             basepile = ''
             for pread in pcol.pileups:
                 if avoid is not None and pread.alignment.qname in avoid:
-                    print "WARN\t" + now() + "\t" + region + "\tdropped mutation due to read in --avoidlist", pread.alignment.qname
-                    return True, False, {}, {}, {}
+                    logger.warning(region + " dropped mutation due to read in --avoidlist " + pread.alignment.qname)
+                    return True, False, maxfrac, {}, {}, {}
 
                 # only consider primary alignments
                 if pread.query_position is not None and not pread.alignment.is_secondary and bin(pread.alignment.flag & 2048) != bin(2048):
@@ -170,18 +207,19 @@ def mutate(args, log, bamfile, bammate, chrom, mutstart, mutend, mutpos_list, av
 
                     extqname = ','.join((pread.alignment.qname,str(pread.alignment.pos),pairname))
 
-                    if pcol.pos in mutpos_list:
+                    if pcol.pos+1 in mutpos_list:
+
                         if not pread.alignment.is_secondary and bin(pread.alignment.flag & 2048) != bin(2048) and not pread.alignment.mate_is_unmapped:
                             outreads[extqname] = pread.alignment
-                            mutid = mutid_list[mutpos_list.index(pcol.pos)]
+                            mutid = mutid_list[mutpos_list.index(pcol.pos+1)]
 
                             if is_snv:
                                 if extqname not in mutreads:
                                     mutreads[extqname] = pread.alignment.seq
 
-                                mutbase = mutbase_list[mutpos_list.index(pcol.pos)]
+                                mutbase = mutbase_list[mutpos_list.index(pcol.pos+1)]
                                 mutbases = list(mutreads[extqname])
-                                mutbases[pread.query_position-1] = mutbase
+                                mutbases[pread.query_position] = mutbase
                                 mutread = ''.join(mutbases)
                                 mutreads[extqname] = mutread
 
@@ -195,13 +233,13 @@ def mutate(args, log, bamfile, bammate, chrom, mutstart, mutend, mutpos_list, av
                             if not args.single:
                                 try:
                                     mate = find_mate(pread.alignment, bammate)
-                                except ValueError, e:
+                                except ValueError:
                                     raise ValueError('cannot find mate reference chrom for read %s, is this a single-ended BAM?' % pread.alignment.qname)
 
                                 if mate is None:
-                                    print "WARN\t" + now() + "\t" + mutid + "\twarning: no mate for", pread.alignment.qname
+                                    logger.warning(mutid + " warning: no mate for " + pread.alignment.qname)
                                     if args.requirepaired:
-                                        print "WARN\t" + now() + "\t" + mutid + "\tskipped mutation due to --requirepaired"
+                                        logger.warning(mutid + " skipped mutation due to --requirepaired")
                                         return True, False, {}, {}, {}
 
                             if extqname not in mutmates:
@@ -210,8 +248,8 @@ def mutate(args, log, bamfile, bammate, chrom, mutstart, mutend, mutpos_list, av
                             log.write(" ".join(('read',extqname,mutreads[extqname],"\n")))
 
                         if len(mutreads) > int(args.maxdepth):
-                            sys.stderr.write("WARN\t" + now() + "\t" + mutid + "\tdepth at site is greater than cutoff, aborting mutation.\n")
-                            return True, False, False, {}, {}, {}
+                            logger.warning("depth at site is greater than cutoff, aborting mutation")
+                            return True, False, maxfrac, {}, {}, {}
 
             # make sure region doesn't have any changes that are likely SNPs
             # (trying to avoid messing with haplotypes)
@@ -229,13 +267,15 @@ def mutate(args, log, bamfile, bammate, chrom, mutstart, mutend, mutpos_list, av
                 if frac > maxfrac:
                     maxfrac = frac
                 if frac > float(args.snvfrac):
-                    sys.stderr.write("WARN\t" + now() + "\t" + region + "\tdropped for proximity to SNP, nearby SNP MAF: " + str(frac)  + " (max snv frac: " + args.snvfrac + ")\n")
+                    logger.warning(region + " dropped for proximity to SNP, nearby SNP MAF: " + str(frac)  + " (max snv frac: " + args.snvfrac + ")")
                     hasSNP = True
             else:
-                sys.stderr.write("WARN\t" + now() + "\t" + region + "\tcould not pileup for region: " + chrom + ":" + str(pcol.pos) + "\n")
+                logger.warning(region + " could not pileup for region: " + chrom + ":" + str(pcol.pos))
                 if not args.ignorepileup:
                     hasSNP = True
 
-    assert maxfrac is not None, "Error: could not pile up over region: %s" % region
+    if maxfrac is None:
+        logger.warning("could not pile up over region: %s" % region)
+        return True, False, maxfrac, {}, {}, {}
 
     return False, hasSNP, maxfrac, outreads, mutreads, mutmates # todo: convert to class
